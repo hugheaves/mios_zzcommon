@@ -29,6 +29,7 @@ local log = g_log
 local T_NUMBER = "T_NUMBER"
 local T_BOOLEAN = "T_BOOLEAN"
 local T_STRING = "T_STRING"
+local T_TABLE = "T_TABLE"
 
 -- GLOBALS
 
@@ -58,52 +59,59 @@ end
 -- appropriate Lua type.
 -- The Luup API _should_ do this automatically as the variables are
 -- all declared with types, but it doesn't. Grrrr.....
-local function getLuupVariable(serviceId, variableName, lul_device, varType) 
-	if (type(lul_device) == "string") then
---		log.debug ("Converting lul_device to number for device ", lul_device)
-		lul_device = tonumber(lul_device)
+local function getLuupVariable(serviceId, variableName, deviceId, varType) 
+	if (type(deviceId) == "string") then
+--		log.debug ("Converting deviceId to number for device ", lul_device)
+		deviceId = tonumber(deviceId)
 	end
 	
-	local value = luup.variable_get(serviceId, variableName, lul_device)
+	local rawValue = luup.variable_get(serviceId, variableName, deviceId)
+	
 	local returnValue = nil
-	if (not value) then
+	if (not rawValue) then
 		returnValue = nil
 	elseif (varType == T_BOOLEAN) then
-		returnValue = (value == "1")
+		returnValue = (rawValue == "1")
 	elseif (varType == T_NUMBER) then
-		returnValue = tonumber(value)
+		returnValue = tonumber(rawValue)
 	elseif (varType == T_STRING) then
-		returnValue = tostring(value)
+		returnValue = tostring(rawValue)
+	elseif (varType == T_TABLE) then
+		returnValue = json.decode(value:gsub("'", "\""))
 	else
 		error ("Invalid varType passed to getLuupVariable, serviceId = " .. serviceId ..
-			", variableName = " .. variableName .. ", lul_device = " .. lul_device ..
+			", variableName = " .. variableName .. ", deviceId = " .. deviceId ..
 			", varType = " .. tostring(varType) )
 		return nil
 	end
 	
-	log.debug ("getLuupVariable: lul_device [",lul_device,"] serviceId [",serviceId,"] Variable Name [",variableName,
-	"] Lua Type [", type(value), "] Value [", value, "] varType [", varType, "] returnValue [", returnValue, "]")
+	log.debug ("getLuupVariable: deviceId [",deviceId,"] serviceId [",serviceId,"] variableName [",variableName,
+	"] rawValue [", rawValue, "] varType [", varType, "] returnValue [", returnValue, "]")
 	
 	return returnValue
 end
 
-local function setLuupVariable(serviceId, variableName, value, lul_device, varType) 
-	log.debug ("setLuupVariable: lul_device [",lul_device,"] serviceId [",serviceId,"] Variable Name [",variableName,
-	"] Lua Type [", type(value), "] Value [", value, "]", "] varType [", varType, "]")
+local function setLuupVariable(serviceId, variableName, newValue, deviceId) 
+	log.debug ("setLuupVariable: deviceId [",deviceId,"] serviceId [",serviceId,"] variableName [",variableName,
+	 "] newValue [", newValue, "]", "] type(newValue) [", type(newValue), "]")
 	
-	if (type(lul_device) == "string") then
---		log.debug ("Converting lul_device to number for device ", lul_device)
-		lul_device = tonumber(lul_device)
+	if (type(deviceId) == "string") then
+--		log.debug ("Converting deviceId to number for device ", lul_device)
+		lul_device = tonumber(deviceId)
 	end
 	
-	if (varType == T_BOOLEAN and value ~= nil) then
-		if (value) then
-			luup.variable_set(serviceId, variableName, "1", lul_device)
-		else
-			luup.variable_set(serviceId, variableName, "0", lul_device)
+	if (newValue == nil)
+		luup.variable_set(serviceId, variableName, "", deviceId)
+	elseif (type(newValue) == "boolean") then
+		local luupValue = "0"
+		if (newValue) then
+			luupValue = "1"
 		end
-	else 
-		luup.variable_set(serviceId, variableName, value, lul_device)
+		luup.variable_set(serviceId, variableName, luupValue, deviceId)
+	elseif (type(newValue) == "table") then
+		luup.variable_set(serviceId, variableName, json.encode(newValue):gsub("\"", "'"), deviceId)
+	else
+		luup.variable_set(serviceId, variableName, newValue, deviceId)
 	end
 end
 
