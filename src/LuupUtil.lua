@@ -124,6 +124,32 @@ local function initLogging(logPrefix, logFilter, logLevelSID, logLevelVar, logLe
 	log.setLevel(getLuupVariable(logLevelSID, logLevelVar, logLevelDevice, T_NUMBER))
 end
 
+
+-------------------------------------
+-------- Lua Utility functions ----------
+-------------------------------------
+
+-- math rounding function (would be nice if Lua had this!)
+local function round (value, multiplier)
+	local result = 0
+	if (value >= 0) then
+		return math.floor(value * multiplier + 0.5) / multiplier
+	else
+		return math.ceil(value * multiplier - 0.5) / multiplier
+	end
+end
+
+-- lookup a key in a table by its value
+local function findKeyByValue(table, value)
+	for k,v in pairs(table) do
+		if (v == value) then
+			return k
+		end
+	end
+
+	return nil
+end
+
 -- RETURN GLOBAL FUNCTION TABLE
 return {
 	initVariableIfNotSet = initVariableIfNotSet,
@@ -131,6 +157,8 @@ return {
 	setLuupVariable = setLuupVariable,
 	luupLog = luupLog,
 	initLogging = initLogging,
+	findKeyByValue = findKeyByValue,
+	round = round,
 	T_NUMBER = T_NUMBER,
 	T_BOOLEAN = T_BOOLEAN,
 	T_STRING = T_STRING
