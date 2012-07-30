@@ -24,6 +24,7 @@
 local luup = luup
 local string = string
 local log = g_log
+local json = g_dkjson
 
 -- CONSTANTS
 local T_NUMBER = "T_NUMBER"
@@ -77,7 +78,9 @@ local function getLuupVariable(serviceId, variableName, deviceId, varType)
 	elseif (varType == T_STRING) then
 		returnValue = tostring(rawValue)
 	elseif (varType == T_TABLE) then
-		returnValue = json.decode(value:gsub("'", "\""))
+		rawValue = rawValue:gsub("'", "\"")
+		log.debug ("rawValue = ", rawValue)
+		returnValue = json.decode(rawValue)
 	else
 		error ("Invalid varType passed to getLuupVariable, serviceId = " .. serviceId ..
 			", variableName = " .. variableName .. ", deviceId = " .. deviceId ..
@@ -99,8 +102,8 @@ local function setLuupVariable(serviceId, variableName, newValue, deviceId)
 --		log.debug ("Converting deviceId to number for device ", lul_device)
 		lul_device = tonumber(deviceId)
 	end
-	
-	if (newValue == nil)
+
+	if (newValue == nil) then
 		luup.variable_set(serviceId, variableName, "", deviceId)
 	elseif (type(newValue) == "boolean") then
 		local luupValue = "0"
@@ -161,6 +164,7 @@ return {
 	round = round,
 	T_NUMBER = T_NUMBER,
 	T_BOOLEAN = T_BOOLEAN,
-	T_STRING = T_STRING
+	T_STRING = T_STRING,
+	T_TABLE = T_TABLE
 }
 
