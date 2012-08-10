@@ -26,6 +26,9 @@ local string = string
 local log = g_log
 local json = g_dkjson
 
+-- REQUIRED MODULES
+local http = require("socket.http")
+
 -- CONSTANTS
 local T_NUMBER = "T_NUMBER"
 local T_BOOLEAN = "T_BOOLEAN"
@@ -128,9 +131,9 @@ local function initLogging(logPrefix, logFilter, logLevelSID, logLevelVar, logLe
 end
 
 
--------------------------------------
+-----------------------------------------
 -------- Lua Utility functions ----------
--------------------------------------
+-----------------------------------------
 
 -- math rounding function (would be nice if Lua had this!)
 local function round (value, multiplier)
@@ -153,6 +156,46 @@ local function findKeyByValue(table, value)
 	return nil
 end
 
+------------------------------------------
+-------- HTTP Utility functions ----------
+------------------------------------------
+
+--- Send a request to to a URL with optional requestParameters that will be JSON encoded.
+-- Expects a JSON formatted response that will be decoded into a Lua table
+-- @return response - a table of the decoded JSON response, or nil if failed
+local function httpGetJSON(url, requestParameters)
+	local postData = nil
+	local response = nil
+
+	if (requestParameters ~= nil) then
+		log.debug ("requestParameters = " , requestParameters)
+		postData = json.encode (requestParameters)
+	end
+
+	log.debug("Making HTTP request: ", "url = ",url, ", postData = ",postData)
+	local body, status, headers = http.request(url, postData)
+
+	if (body == nil or status == nil or headers == nil or status ~= 200) then
+		log.error ("Received bad HTTP response")
+		log.error ("URL: " ,url)
+		log.error ("postData: ",postData)
+		log.error ("Status: ",status)
+		log.error ("Body: " ,body)
+		log.error ("Headers: ",headers)
+	else
+		log.debug ("Received good HTTP response")
+		log.debug ("URL: " ,url)
+		log.debug ("postData: ",postData)
+		log.debug ("Status: ",status)
+		log.debug ("Body: " ,body)
+		log.debug ("Headers: ",headers)
+		response = json.decode(body)
+		log.debug ("Parsed response: ",response)
+	end
+
+	return response
+end
+
 -- RETURN GLOBAL FUNCTION TABLE
 return {
 	initVariableIfNotSet = initVariableIfNotSet,
@@ -162,6 +205,7 @@ return {
 	initLogging = initLogging,
 	findKeyByValue = findKeyByValue,
 	round = round,
+	httpGetJSON = httpGetJSON,
 	T_NUMBER = T_NUMBER,
 	T_BOOLEAN = T_BOOLEAN,
 	T_STRING = T_STRING,

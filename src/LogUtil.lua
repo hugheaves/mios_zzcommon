@@ -139,6 +139,13 @@ local function debug(...)
 	end
 end
 
+-- log a trace message
+local function trace(...)
+	if (g_logLevel >= LOG_LEVEL_TRACE) then
+		doLog (LOG_LEVEL_TRACE, 3, arg)
+	end
+end
+
 --- This function is registered with Lua debug.sethook()
 -- when the logLevel is setup to TRACE.
 -- It provides logging of function exit and entry to assist with debugging
@@ -233,6 +240,7 @@ end
 
 -- RETURN GLOBAL FUNCTION TABLE
 return {
+	trace = trace,
 	debug = debug,
 	info = info,
 	error = error,
