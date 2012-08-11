@@ -122,12 +122,15 @@ local function setLuupVariable(serviceId, variableName, newValue, deviceId)
 end
 
 -- initialize the logging system
-local function initLogging(logPrefix, logFilter, logLevelSID, logLevelVar, logLevelDevice)
+local function initLogging(logPrefix, defaultLogConfig, logConfigSID, logConfigDeviceId)
 	log.setPrefix(logPrefix)
 	log.setLogFunction(luupLog)
-	log.addFilter(logFilter)
-	initVariableIfNotSet(logLevelSID, logLevelVar, log.LOG_LEVEL_INFO, logLevelDevice)
-	log.setLevel(getLuupVariable(logLevelSID, logLevelVar, logLevelDevice, T_NUMBER))
+	
+	initVariableIfNotSet(logConfigSID, "LogLevel", log.LOG_LEVEL_INFO, logConfigDeviceId)
+	initVariableIfNotSet(logConfigSID, "LogConfig" , defaultLogConfig, logConfigDeviceId)
+
+	log.setLevel(getLuupVariable(logConfigSID,  "LogLevel", logConfigDeviceId, T_NUMBER))
+	log.setConfig(getLuupVariable(logConfigSID,  "LogConfig", logConfigDeviceId, T_TABLE))
 end
 
 

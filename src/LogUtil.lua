@@ -36,15 +36,15 @@ local LOG_LEVEL_DEBUG = 30
 local LOG_LEVEL_TRACE = 40
 
 local LOG_LEVELS = {
-[LOG_LEVEL_ERROR] = "ERROR",
-[LOG_LEVEL_INFO] = "INFO",
-[LOG_LEVEL_DEBUG] = "DEBUG",
-[LOG_LEVEL_TRACE] = "TRACE"
+	[LOG_LEVEL_ERROR] = "ERROR",
+	[LOG_LEVEL_INFO] = "INFO",
+	[LOG_LEVEL_DEBUG] = "DEBUG",
+	[LOG_LEVEL_TRACE] = "TRACE"
 }
 
 local g_logLevel = LOG_LEVEL_INFO
+local g_logConfig = {}
 local g_logPrefix = ""
-local g_logFilter = {}
 local g_logFunc = print
 
 -- silly function that returns value, or "nil" if value is nil
@@ -95,54 +95,79 @@ local function deepToString(o)
 	end
 end
 
+local function getMinLogLevel(fileName, functionName, level)
+	local matched = false
+
+	if (g_logConfig.version and g_logConfig.version == 1) then
+		for filePattern, data in pairs(g_logConfig.files) do
+			matched = fileName:find(filePattern)
+			if (matched) then
+				if (data.functions[functionName]) then
+					level = data.functions[functionName]
+				else
+					level = data.level
+				end
+				break
+			end
+		end
+	end
+	
+	return level
+end
+
 --- internal function builds a message
 -- and logs at the given level using g_logFunc
-local function doLog(level, callerLevel, arg)
-	local name = "unknown"
+local function doLog(level, callerLevel, separator, arg)
+	local functionName = "unknown"
+	local fileName = "unknown"
 	local line = "unknown"
-	local messageLevel = LOG_LEVELS[level]
-	
+
 	local info = luadebug.getinfo(callerLevel, "nlS")
 	if (info and info.name) then
-		name = info.name
-	elseif (info and info.short_src) then
-		name = info.short_src
+		functionName = info.name
+	end
+	if (info and info.short_src) then
+		fileName = info.short_src
 	end
 	if (info and info.currentline) then
 		line = info.currentline
 	end
-	
-	local message = g_logPrefix .. " " .. messageLevel .. " (" .. name .. ":" .. line .. ") - "
-	for i = 1, arg.n, 1 do
-		message = message .. deepToString(arg[i])
-	end
 
-	g_logFunc(message, level)
+
+	if (level <= getMinLogLevel(fileName, functionName, g_logLevel)) then
+		local message = {g_logPrefix , " " , LOG_LEVELS[level] , " (", functionName , ":" , line , ")", separator}
+
+		for i = 1, arg.n, 1 do
+			table.insert(message, deepToString(arg[i]))
+		end
+
+		g_logFunc(table.concat(message), level)
+	end
 end
 
 -- log an error message
 local function error(...)
-	doLog (LOG_LEVEL_ERROR, 3, arg)
+	doLog (LOG_LEVEL_ERROR, 3, " - ", arg)
 end
 
 -- log an informational message
 local function info(...)
 	if (g_logLevel >= LOG_LEVEL_INFO) then
-		doLog (LOG_LEVEL_INFO, 3, arg)
+		doLog (LOG_LEVEL_INFO, 3, " - ",arg)
 	end
 end
 
 -- log a debugging message
 local function debug(...)
 	if (g_logLevel >= LOG_LEVEL_DEBUG) then
-		doLog (LOG_LEVEL_DEBUG, 3, arg)
+		doLog (LOG_LEVEL_DEBUG, 3, " - ",arg)
 	end
 end
 
 -- log a trace message
 local function trace(...)
 	if (g_logLevel >= LOG_LEVEL_TRACE) then
-		doLog (LOG_LEVEL_TRACE, 3, arg)
+		doLog (LOG_LEVEL_TRACE, 3, " - ",arg)
 	end
 end
 
@@ -150,49 +175,22 @@ end
 -- when the logLevel is setup to TRACE.
 -- It provides logging of function exit and entry to assist with debugging
 local function logHook(hookType)
-	
+
 	local message = ""
 	local callerLevel = 2
 
 	local info = luadebug.getinfo(callerLevel, "S")
-	if (not info or info.what ~= "Lua") then
+		if (not info or info.what ~= "Lua" or not info.source or info.source:len() < 1 or info.source:byte(1) ~= 64) then
 		return
-	end
-	
-	if (not info.source or info.source:len() < 1 or info.source:byte(1) ~= 64) then
-		return
-	end
-
-	local functionList = nil
-	for k, v in pairs(g_logFilter) do
-		match = info.source:match(k) 
-		if (match) then
-			functionList = v
-			break
-		end
-	end
-	
-	if (not functionList) then
-		return
-	end
-	
-	if (#functionList > 0) then
-		info = luadebug.getinfo(callerLevel, "nl")
-		if (not info or not info.name) then
-			return
-		end
-		if (findKeyByValue(functionList, info.name)) then
-			return
-		end
 	end
 	
 	if (hookType == "call") then
-		message = "Called FROM:"
+		message = "<----- Called From: "
 	elseif (hookType == "return") then
-		message = "Returning TO:"
+		message = "-----> Exiting To: "
 	end
 
-	local seperator = " "
+	local seperator = ""
 	repeat
 		callerLevel = callerLevel + 1
 		info = luadebug.getinfo(callerLevel, "nlS")
@@ -209,20 +207,23 @@ local function logHook(hookType)
 		end
 	until (not info)
 
-	doLog(LOG_LEVEL_TRACE, 3, { ["n"] = 1, [1] = message })
+	doLog(LOG_LEVEL_TRACE, 3, " ", { ["n"] = 1, [1] = message })
+end
+
+local function enableDebugHook()
+	luadebug.sethook (logHook, "cr")
+end
+
+local function disableDebugHook()
+	luadebug.sethook ()
 end
 
 --- set the log level and install or remove the debug hook depending on the new level
 local function setLevel(newLogLevel)
-	if (newLogLevel < LOG_LEVEL_TRACE and g_logLevel == LOG_LEVEL_TRACE) then
-		luadebug.sethook ()
-	elseif (newLogLevel == LOG_LEVEL_TRACE and g_logLevel < LOG_LEVEL_TRACE) then
-		luadebug.sethook (logHook, "cr")
-	end
 	g_logLevel = newLogLevel
 end
 
-local function setPrefix(logPrefix) 
+local function setPrefix(logPrefix)
 	g_logPrefix = logPrefix
 end
 
@@ -230,12 +231,14 @@ local function setLogFunction(logFunction)
 	g_logFunc = logFunction
 end
 
-local function addFilter(logFilter)
-	if (logFilter) then
-		for k, v in pairs(logFilter) do
-			g_logFilter[k] = logFilter[k]
-		end
+local function setConfig(logConfig)
+	if (logConfig ~= nil) then
+		g_logConfig = logConfig
 	end
+end
+
+local function getConfig()
+	return g_logConfig
 end
 
 -- RETURN GLOBAL FUNCTION TABLE
@@ -246,8 +249,11 @@ return {
 	error = error,
 	setPrefix = setPrefix,
 	setLevel = setLevel,
-	addFilter = addFilter,
+	setConfig = setConfig,
+	getConfig = getConfig,
 	setLogFunction = setLogFunction,
+	enableDebugHook = enableDebugHook,
+	disableDebugHook = disableDebugHook,
 	LOG_LEVEL_ERROR = LOG_LEVEL_ERROR,
 	LOG_LEVEL_INFO = LOG_LEVEL_INFO,
 	LOG_LEVEL_DEBUG = LOG_LEVEL_DEBUG,
