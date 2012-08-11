@@ -28,6 +28,9 @@ local string = string
 -- CONSTANTS
 --
 
+-- special logging level using in logging configuration table
+local LOG_LEVEL_DEFAULT = -1
+
 -- Module specific logging levels. Call the  "setLevel" function
 -- with one of these
 local LOG_LEVEL_ERROR = 10
@@ -95,13 +98,12 @@ local function deepToString(o)
 	end
 end
 
-local function getMinLogLevel(fileName, functionName, level)
-	local matched = false
-
+local function getMinLogLevel(fileName, functionName, defaultLevel)
+	local level = nil
+	
 	if (g_logConfig.version and g_logConfig.version == 1) then
 		for filePattern, data in pairs(g_logConfig.files) do
-			matched = fileName:find(filePattern)
-			if (matched) then
+			if (fileName:find(filePattern)) then
 				if (data.functions[functionName]) then
 					level = data.functions[functionName]
 				else
@@ -112,7 +114,11 @@ local function getMinLogLevel(fileName, functionName, level)
 		end
 	end
 	
-	return level
+	if (level ~= nil and level ~= LOG_LEVEL_DEFAULT) then
+		return level
+	else
+		return defaultLevel
+	end
 end
 
 --- internal function builds a message
