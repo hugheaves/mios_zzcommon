@@ -49,23 +49,12 @@ local function luupLog(message, level)
 	luup.log(message, luupLogLevel)
 end
 
--- initalize a Luup variable to a value if it's not already set
-local function initVariableIfNotSet(serviceId, variableName, initValue, lul_device)
-	local value = luup.variable_get(serviceId, variableName, lul_device)
-	log.debug ("initVariableIfNotSet: lul_device [",lul_device,"] serviceId [",serviceId,"] Variable Name [",variableName,
-	"] Lua Type [", type(value), "] Value [", value, "]")
-	if (value == nil or value == "") then
-		luup.variable_set(serviceId, variableName, initValue, lul_device)
-	end
-end
-
 --- return a Luup variable with the added capability to convert to a the
 -- appropriate Lua type.
 -- The Luup API _should_ do this automatically as the variables are
 -- all declared with types, but it doesn't. Grrrr.....
 local function getLuupVariable(serviceId, variableName, deviceId, varType) 
 	if (type(deviceId) == "string") then
---		log.debug ("Converting deviceId to number for device ", lul_device)
 		deviceId = tonumber(deviceId)
 	end
 	
@@ -102,7 +91,6 @@ local function setLuupVariable(serviceId, variableName, newValue, deviceId)
 	 "] newValue [", newValue, "]", "] type(newValue) [", type(newValue), "]")
 	
 	if (type(deviceId) == "string") then
---		log.debug ("Converting deviceId to number for device ", lul_device)
 		lul_device = tonumber(deviceId)
 	end
 
@@ -121,16 +109,30 @@ local function setLuupVariable(serviceId, variableName, newValue, deviceId)
 	end
 end
 
--- initialize the logging system
-local function initLogging(logPrefix, defaultLogConfig, logConfigSID, logConfigDeviceId)
-	log.setPrefix(logPrefix)
-	log.setLogFunction(luupLog)
-	
-	initVariableIfNotSet(logConfigSID, "LogLevel", log.LOG_LEVEL_INFO, logConfigDeviceId)
-	initVariableIfNotSet(logConfigSID, "LogConfig" , defaultLogConfig, logConfigDeviceId)
+-- initialize a Luup variable to a value if it's not already set
+local function initVariableIfNotSet(serviceId, variableName, initValue, deviceId)
+	log.debug ("Entering initVariableIfNotSet: lul_device [",deviceId,"] serviceId [",serviceId,"] variableName [",variableName,
+	"] initValue [", initValue)
+	local value = luup.variable_get(serviceId, variableName, deviceId)
+	log.debug ("current value= ", value)
+	if (value == nil or value == "") then
+		setLuupVariable(serviceId, variableName, initValue, deviceId)
+		log.info("Set initial value of ",variableName," (", serviceId, ") to ",initValue)
+	end
+end
 
-	log.setLevel(getLuupVariable(logConfigSID,  "LogLevel", logConfigDeviceId, T_NUMBER))
-	log.setConfig(getLuupVariable(logConfigSID,  "LogConfig", logConfigDeviceId, T_TABLE))
+-- initialize the logging system
+local function initLogging(prefix, defaultConfig, sid, deviceId)
+	log.setPrefix(prefix)
+	log.setLogFunction(luupLog)
+	log.info ("logPrefix = ", prefix, ", defaultConfig = ", defaultConfig, 
+		", sid = ", sid, ", deviceId = ", deviceId)
+		
+	initVariableIfNotSet(sid, "LogLevel", log.LOG_LEVEL_INFO, deviceId)
+	initVariableIfNotSet(sid, "LogConfig" , defaultConfig, deviceId, T_TABLE)
+
+	log.setLevel(getLuupVariable(sid,  "LogLevel", deviceId, T_NUMBER))
+	log.setConfig(getLuupVariable(sid,  "LogConfig", deviceId, T_TABLE))
 end
 
 

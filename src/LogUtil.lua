@@ -102,15 +102,13 @@ local function getMinLogLevel(fileName, functionName, defaultLevel)
 	local level = nil
 	
 	if (g_logConfig.version and g_logConfig.version == 1) then
-		for filePattern, data in pairs(g_logConfig.files) do
-			if (fileName:find(filePattern)) then
-				if (data.functions[functionName]) then
-					level = data.functions[functionName]
+		local fileConfig = g_logConfig.files[fileName]
+		if (fileConfig ~= nil) then	
+				if (fileConfig.functions[functionName]) then
+					level = fileConfig.functions[functionName]
 				else
-					level = data.level
+					level = fileConfig.files[fileName].level
 				end
-				break
-			end
 		end
 	end
 	
@@ -119,6 +117,18 @@ local function getMinLogLevel(fileName, functionName, defaultLevel)
 	else
 		return defaultLevel
 	end
+end
+
+-- return filename part of path
+-- Ex: @/etc/cmh-ludl/L_Zabbix_util.lua
+-- return: L_Zabbix_util.lua
+local function getFileName(shortName, longName)
+--	luup.log("shortName = " .. tostring(shortName) .. ", longName = " .. tostring(longName))
+	local fileName = longName:match("@.*/(.*)")
+	if (fileName == nil) then
+		fileName = "unknown"
+	end
+	return fileName
 end
 
 --- internal function builds a message
@@ -132,8 +142,8 @@ local function doLog(level, callerLevel, separator, arg)
 	if (info and info.name) then
 		functionName = info.name
 	end
-	if (info and info.short_src) then
-		fileName = info.short_src
+	if (info) then
+		fileName = getFileName(info.short_src, info.source)
 	end
 	if (info and info.currentline) then
 		line = info.currentline
@@ -141,7 +151,7 @@ local function doLog(level, callerLevel, separator, arg)
 
 
 	if (level <= getMinLogLevel(fileName, functionName, g_logLevel)) then
-		local message = {g_logPrefix , " " , LOG_LEVELS[level] , " (", functionName , ":" , line , ")", separator}
+		local message = {g_logPrefix , " " , LOG_LEVELS[level] , " (", functionName, "@", fileName , ":" , line , ")", separator}
 
 		for i = 1, arg.n, 1 do
 			table.insert(message, deepToString(arg[i]))
