@@ -6,7 +6,7 @@ local log = require ("LogUtil")
 local testConfig = {
 		["version"] = 1,
 		["files"] = {
-			["./*LogUtil.lua$"] = {
+			["./*TestLog.lua$"] = {
 				["level"] = log.LOG_LEVEL_INFO,
 				["functions"] = {
 					["complicatedFunction"] = log.LOG_LEVEL_TRACE,
@@ -35,22 +35,32 @@ local function writeSomeLogMessages()
 	log.debug ("dooby dooby doo")
 	log.info ("banana bobana")
 	log.error ("here we go")
+	log.debugValues("message", "a", 1, "b", 2, "c", "three")
 	complicatedFunction()
 end
 
 print ("==================================")
-log.setPrefix ("TestingLog")
+print ("USING LOGGING DEFAULTS")
+print ("==================================")
+log.setPrefix ("TestLog")
 writeSomeLogMessages()
 
+print ("==================================")
+print ("SETTING DEBUG LEVEL")
 print ("==================================")
 log.setLevel(log.LOG_LEVEL_DEBUG)
 writeSomeLogMessages()
 
 print ("==================================")
-log.enableDebugHook()
+print ("ENABLING DEBUG HOOK")
+print ("==================================")
 log.setLevel(log.LOG_LEVEL_TRACE)
+log.enableDebugHook()
 writeSomeLogMessages()
 
+
+print ("==================================")
+print ("SETTING CONFIG")
 print ("==================================")
 log.setConfig(testConfig)
 writeSomeLogMessages()

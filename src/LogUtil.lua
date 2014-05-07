@@ -1,6 +1,6 @@
 -- Generic Lua Logging Facility
 --
--- Copyright (C) 2012  Hugh Eaves
+-- Copyright (C) 2014  Hugh Eaves
 --
 -- This program is free software: you can redistribute it and/or modify
 -- it under the terms of the GNU General Public License as published by
@@ -39,239 +39,345 @@ local LOG_LEVEL_DEBUG = 30
 local LOG_LEVEL_TRACE = 40
 
 local LOG_LEVELS = {
-	[LOG_LEVEL_ERROR] = "ERROR",
-	[LOG_LEVEL_INFO] = "INFO",
-	[LOG_LEVEL_DEBUG] = "DEBUG",
-	[LOG_LEVEL_TRACE] = "TRACE"
+  [LOG_LEVEL_ERROR] = "ERROR",
+  [LOG_LEVEL_INFO] = "INFO",
+  [LOG_LEVEL_DEBUG] = "DEBUG",
+  [LOG_LEVEL_TRACE] = "TRACE"
 }
 
-local g_logLevel = LOG_LEVEL_INFO
+local DATE_FORMAT = "%m/%d/%y %H:%M:%S"
+
+local function defaultLogFunction(message, level)
+  print (os.date(DATE_FORMAT, os.time()) .. " " .. message)
+end
+
+local g_currentLogLevel = LOG_LEVEL_INFO
 local g_logConfig = {}
 local g_logPrefix = ""
-local g_logFunc = print
+local g_logFunc = defaultLogFunction
 
 -- silly function that returns value, or "nil" if value is nil
 local function nilSafe(value)
-	if (value) then
-		return value
-	else
-		return "nil"
-	end
+  if (value) then
+    return value
+  else
+    return "nil"
+  end
 end
 
 -- lookup a key in a table by its value
 local function findKeyByValue(table, value)
-	for k,v in pairs(table) do
-		if (v == value) then
-			return k
-		end
-	end
+  for k,v in pairs(table) do
+    if (v == value) then
+      return k
+    end
+  end
 
-	return nil;
+  return nil;
 end
 
 
 -- function adapted from http://www.luafaq.org/
 local function deepToString(o)
-	if (o == nil) then
-		return "nil"
-	elseif type(o) == 'string' then
-		return o
-	elseif type(o) == 'number' then
-		return tostring(o)
-	elseif type(o) == 'table' then
-		local s = '{ '
-		for k,v in pairs(o) do
-			if type(k) ~= 'number' then
-				k = '"'..k..'"'
-			end
-			if type(v) == 'string' then
-				v = '"' .. v .. '"'
-			else
-				v = deepToString(v)
-			end
-			s = s .. '['..k..'] = ' .. v .. ','
-		end
-		return s .. '} '
-	else
-		return '"' .. tostring(o) .. '"'
-	end
+  if (o == nil) then
+    return "nil"
+  elseif type(o) == 'string' then
+    return o
+  elseif type(o) == 'number' then
+    return tostring(o)
+  elseif type(o) == 'table' then
+    local s = '{ '
+    for k,v in pairs(o) do
+      if type(k) ~= 'number' then
+        k = '"'..k..'"'
+      end
+      if type(v) == 'string' then
+        v = '"' .. v .. '"'
+      else
+        v = deepToString(v)
+      end
+      s = s .. '['..k..'] = ' .. v .. ','
+    end
+    return s .. '} '
+  else
+    return '"' .. tostring(o) .. '"'
+  end
 end
 
-local function getMinLogLevel(fileName, functionName, defaultLevel)
-	local level = nil
-	
-	if (g_logConfig.version and g_logConfig.version == 1) then
-		local fileConfig = g_logConfig.files[fileName]
-		if (fileConfig ~= nil) then	
-				if (fileConfig.functions[functionName]) then
-					level = fileConfig.functions[functionName]
-				else
-					level = fileConfig.files[fileName].level
-				end
-		end
-	end
-	
-	if (level ~= nil and level ~= LOG_LEVEL_DEFAULT) then
-		return level
-	else
-		return defaultLevel
-	end
+--- Determine the currently configured logging level
+-- for the given fileName and functionName
+local function getConfiguredLogLevel(fileName, functionName)
+  local level = nil
+
+  if (g_logConfig.version and g_logConfig.version == 1) then
+    local fileConfig = g_logConfig.files[fileName]
+    if (fileConfig ~= nil) then
+      if (fileConfig.functions[functionName]) then
+        level = fileConfig.functions[functionName]
+      else
+        level = fileConfig.files[fileName].level
+      end
+    end
+  end
+
+  if (level ~= nil and level ~= LOG_LEVEL_DEFAULT) then
+    return level
+  end
+
+  return g_currentLogLevel
 end
 
--- return filename part of path
--- Ex: @/etc/cmh-ludl/L_Zabbix_util.lua
--- return: L_Zabbix_util.lua
-local function getFileName(shortName, longName)
---	luup.log("shortName = " .. tostring(shortName) .. ", longName = " .. tostring(longName))
-	local fileName = longName:match("@.*/(.*)")
-	if (fileName == nil) then
-		fileName = "unknown"
-	end
-	return fileName
+local function getCallLocation(debugInfo)
+  if (not debugInfo) then
+    return nil, nil, nil, nil
+  end
+
+  local fileName, functionName, line
+
+  if (debugInfo.what == "main") then
+    functionName = "MAIN"
+  elseif (debugInfo.name) then
+    functionName = debugInfo.name
+  else
+    functionName = "unknownFunction"
+  end
+
+  if (debugInfo.short_src == "[C]") then
+    fileName = "C_Code"
+    functionName = "C_Function"
+  else
+    -- return filename part of path
+    -- Ex: @/etc/cmh-ludl/L_Zabbix_util.lua
+    -- return: L_Zabbix_util.lua
+    fileName = debugInfo.source:match("@.*/(.*)")
+  end
+
+  if (fileName == nil) then
+    fileName = "unknown"
+  end
+
+  if (debugInfo.currentline and debugInfo.currentline ~= -1) then
+    line = debugInfo.currentline
+  else
+    line = "unknownLine"
+  end
+
+  return functionName, fileName, line, table.concat({"(", functionName, "@", fileName , ":" , line , ")"})
 end
 
 --- internal function builds a message
 -- and logs at the given level using g_logFunc
-local function doLog(level, callerLevel, separator, arg)
-	local functionName = "unknown"
-	local fileName = "unknown"
-	local line = "unknown"
+local function doLog(level, stackDepth, ...)
+  local args = {...}
 
-	local info = luadebug.getinfo(callerLevel, "nlS")
-	if (info and info.name) then
-		functionName = info.name
-	end
-	if (info) then
-		fileName = getFileName(info.short_src, info.source)
-	end
-	if (info and info.currentline) then
-		line = info.currentline
-	end
+  local callerInfo = luadebug.getinfo(stackDepth, "nlS")
+  -- print ("doLog debugInfo" .. deepToString(debugInfo))
 
+  local functionName, fileName, line, locationString = getCallLocation(callerInfo)
 
-	if (level <= getMinLogLevel(fileName, functionName, g_logLevel)) then
-		local message = {g_logPrefix , " " , LOG_LEVELS[level] , " (", functionName, "@", fileName , ":" , line , ")", separator}
+  local configuredLevel = getConfiguredLogLevel(fileName, functionName)
 
-		for i = 1, arg.n, 1 do
-			table.insert(message, deepToString(arg[i]))
-		end
+  -- print ("configuredLevel = ", configuredLevel)
 
-		g_logFunc(table.concat(message), level)
-	end
+  if (level <= configuredLevel) then
+    local message = {g_logPrefix , " " , LOG_LEVELS[level] , locationString , ") - "}
+
+    for i = 1, #args, 1 do
+      table.insert(message, deepToString(args[i]))
+    end
+
+    g_logFunc(table.concat(message), level)
+  end
+end
+
+local function logInternal(logLevel, ...)
+  local STACK_DEPTH = 4
+  if (g_currentLogLevel >= logLevel) then
+    doLog (logLevel, STACK_DEPTH, ...)
+  end
+end
+
+local function log(logLevel, ...)
+  logInternal(logLevel)
 end
 
 -- log an error message
 local function error(...)
-	doLog (LOG_LEVEL_ERROR, 3, " - ", arg)
+  logInternal (LOG_LEVEL_ERROR, ...)
 end
 
 -- log an informational message
 local function info(...)
-	if (g_logLevel >= LOG_LEVEL_INFO) then
-		doLog (LOG_LEVEL_INFO, 3, " - ",arg)
-	end
+  logInternal (LOG_LEVEL_INFO, ...)
 end
 
 -- log a debugging message
 local function debug(...)
-	if (g_logLevel >= LOG_LEVEL_DEBUG) then
-		doLog (LOG_LEVEL_DEBUG, 3, " - ",arg)
-	end
+  logInternal (LOG_LEVEL_DEBUG, ...)
 end
 
 -- log a trace message
 local function trace(...)
-	if (g_logLevel >= LOG_LEVEL_TRACE) then
-		doLog (LOG_LEVEL_TRACE, 3, " - ",arg)
-	end
+  logInternal (LOG_LEVEL_TRACE, ...)
 end
 
+local function logValuesInternal(logLevel, message, ...)
+  if (g_currentLogLevel >= logLevel) then
+    local args = {...}
+    local logMessage = { message, ": " }
+    local i
+    for i = 1,#args,2 do
+      table.insert(logMessage, args[i])
+      table.insert(logMessage, " = ")
+      table.insert(logMessage, args[i+1])
+      if (i < #args - 1) then
+        table.insert(logMessage, ", ")
+      end
+    end
+    local STACK_DEPTH = 4
+    doLog (logLevel, STACK_DEPTH,table.concat(logMessage))
+  end
+end
+
+local function logValues(logLevel, message, ...)
+  logValuesInternal(logLevel, message, ...)
+end
+
+-- log a debugging message
+local function errorValues(message, ...)
+  logValuesInternal(LOG_LEVEL_DEBUG, message, ...)
+end
+
+-- log a debugging message
+local function infoValues(message, ...)
+  logValuesInternal(LOG_LEVEL_INFO, message, ...)
+end
+
+-- log a debugging message
+local function debugValues(message, ...)
+  logValuesInternal(LOG_LEVEL_DEBUG, message, ...)
+end
+
+-- log a debugging message
+local function traceValues(message, ...)
+  logValues(LOG_LEVEL_TRACE, message, ...)
+end
+
+
 --- This function is registered with Lua debug.sethook()
--- when the logLevel is setup to TRACE.
+-- when the logLevel is set to TRACE.
 -- It provides logging of function exit and entry to assist with debugging
 local function logHook(hookType)
+  -- print ("LOG HOOK START ", hookType)
 
-	local message = ""
-	local callerLevel = 2
+  for i = 1, 1000, 1 do
+    local calledFunctionInfo = luadebug.getinfo(i, "nlS")
+    if (not calledFunctionInfo) then
+      break
+    end
+    --print ("STACK[" .. i .. "]\n" , deepToString(calledFunctionInfo), "\n")
+  end
 
-	local info = luadebug.getinfo(callerLevel, "S")
-		if (not info or info.what ~= "Lua" or not info.source or info.source:len() < 1 or info.source:byte(1) ~= 64) then
-		return
-	end
-	
-	if (hookType == "call") then
-		message = "<----- Called From: "
-	elseif (hookType == "return") then
-		message = "-----> Exiting To: "
-	end
+  local FUNCTION_STACK_DEPTH = 2
 
-	local seperator = ""
-	repeat
-		callerLevel = callerLevel + 1
-		info = luadebug.getinfo(callerLevel, "nlS")
-		if (info) then
-			local src = info.short_src or "nil"
-			local name = info.name and info.name or src
-			local line = info.currentline and info.currentline or "unknown"
-			message = message .. seperator .. "(" .. name .. ":" .. line .. ")"
-			if (hookType == "call") then
-				seperator = " <- "
-			else
-				seperator = " -> "
-			end
-		end
-	until (not info)
+  -- retrieve info fields: source, short_src, linedefined, lastlinedefined, and what
+  local calledFunctionInfo = luadebug.getinfo(FUNCTION_STACK_DEPTH, "S")
+  --print ("CALLED FUNCTION INFO:\n" , deepToString(calledFunctionInfo), "\n")
 
-	doLog(LOG_LEVEL_TRACE, 3, " ", { ["n"] = 1, [1] = message })
+  -- only log the call stack if we're in Lua code
+  if (not calledFunctionInfo or (calledFunctionInfo.what ~= "Lua" and calledFunctionInfo.what ~= "main")) then
+    --print ("NOT A LUA FUNCTION")
+    return
+  end
+
+  local thisFunctionInfo = luadebug.getinfo(1, "S")
+  --  print ("LOG HOOK THIS FUNCTION DEBUG INFO ", deepToString(thisFunctionInfo), "\n")
+  -- don't write log function calls for functions in this file
+  if (thisFunctionInfo.short_src == calledFunctionInfo.short_src) then
+    --  print ("NOT LOGGING SELF")
+    return
+  end
+
+  local message = {}
+
+  if (hookType == "call") then
+    table.insert(message, "ENTRY\nCalled From:\n")
+  elseif (hookType == "return") then
+    table.insert(message, "EXIT\nReturning To:\n")
+  else
+    print ("NOT A CALL / RETURN HOOK")
+    -- should never get here
+    return
+  end
+
+  for stackLevel = FUNCTION_STACK_DEPTH + 1, 1000, 1 do
+    local stackInfo = luadebug.getinfo(stackLevel, "nlS")
+    if (not stackInfo) then
+      break
+    end
+    local functionName, fileName, line, locationString = getCallLocation(stackInfo)
+    table.insert(message,locationString)
+    table.insert(message,"\n")
+    --   print ("LOG HOOK CALLER DEBUG INFO ", deepToString(debugInfo), "\n")
+  end
+
+  --print ("\n" .. table.concat(message) .. "\n")
+  doLog(LOG_LEVEL_TRACE, FUNCTION_STACK_DEPTH + 1, table.concat(message))
+  --print ("LOG HOOK RETURNING")
 end
 
 local function enableDebugHook()
-	luadebug.sethook (logHook, "cr")
+  luadebug.sethook (logHook, "cr")
 end
 
 local function disableDebugHook()
-	luadebug.sethook ()
+  luadebug.sethook ()
 end
 
 --- set the log level and install or remove the debug hook depending on the new level
 local function setLevel(newLogLevel)
-	g_logLevel = newLogLevel
+  g_currentLogLevel = newLogLevel
 end
 
 local function setPrefix(logPrefix)
-	g_logPrefix = logPrefix
+  g_logPrefix = logPrefix
 end
 
 local function setLogFunction(logFunction)
-	g_logFunc = logFunction
+  g_logFunc = logFunction
 end
 
 local function setConfig(logConfig)
-	if (logConfig ~= nil) then
-		g_logConfig = logConfig
-	end
+  if (logConfig ~= nil) then
+    g_logConfig = logConfig
+  end
 end
 
 local function getConfig()
-	return g_logConfig
+  return g_logConfig
 end
 
 -- RETURN GLOBAL FUNCTION TABLE
 return {
-	trace = trace,
-	debug = debug,
-	info = info,
-	error = error,
-	setPrefix = setPrefix,
-	setLevel = setLevel,
-	setConfig = setConfig,
-	getConfig = getConfig,
-	setLogFunction = setLogFunction,
-	enableDebugHook = enableDebugHook,
-	disableDebugHook = disableDebugHook,
-	LOG_LEVEL_ERROR = LOG_LEVEL_ERROR,
-	LOG_LEVEL_INFO = LOG_LEVEL_INFO,
-	LOG_LEVEL_DEBUG = LOG_LEVEL_DEBUG,
-	LOG_LEVEL_TRACE = LOG_LEVEL_TRACE
+  log = log,
+  trace = trace,
+  debug = debug,
+  info = info,
+  error = error,
+  logValues = logValues,
+  traceValues = traceValues,
+  debugValues = debugValues,
+  infoValues = infoValues,
+  errorValues = errorValues,
+  setPrefix = setPrefix,
+  setLevel = setLevel,
+  setConfig = setConfig,
+  getConfig = getConfig,
+  setLogFunction = setLogFunction,
+  enableDebugHook = enableDebugHook,
+  disableDebugHook = disableDebugHook,
+  LOG_LEVEL_ERROR = LOG_LEVEL_ERROR,
+  LOG_LEVEL_INFO = LOG_LEVEL_INFO,
+  LOG_LEVEL_DEBUG = LOG_LEVEL_DEBUG,
+  LOG_LEVEL_TRACE = LOG_LEVEL_TRACE
 }

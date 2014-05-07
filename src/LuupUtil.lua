@@ -23,8 +23,8 @@
 -- IMPORT GLOBALS
 local luup = luup
 local string = string
-local log = g_log
-local json = g_dkjson
+local log = require("L_" .. g_pluginName .. "_log")
+local json = require("L_" .. g_pluginName .. "_dkjson")
 
 -- REQUIRED MODULES
 local http = require("socket.http")
@@ -112,7 +112,7 @@ end
 -- initialize a Luup variable to a value if it's not already set
 local function initVariableIfNotSet(serviceId, variableName, initValue, deviceId)
 	log.debug ("Entering initVariableIfNotSet: lul_device [",deviceId,"] serviceId [",serviceId,"] variableName [",variableName,
-	"] initValue [", initValue)
+	"] initValue [", initValue, "]")
 	local value = luup.variable_get(serviceId, variableName, deviceId)
 	log.debug ("current value= ", value)
 	if (value == nil or value == "") then
