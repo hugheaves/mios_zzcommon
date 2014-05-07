@@ -18,7 +18,7 @@
 
 -- IMPORT GLOBALS
 local os = os
-local log = require("L_" .. g_pluginName .. "_log")
+local logger = require("L_" .. g_pluginName .. "_log")
 
 -- IMPORT REQUIRED MODULES
 local socket = require("socket")
@@ -163,20 +163,20 @@ end
 
 function  variable_set(service, name, value, lul_device)
   notifyWatchers(service, name, value, lul_device)
-  log.debug("Setting [" .. lul_device .."][" .. service .."][" .. name .. "] = " .. value .. " (" .. type(value) .. ")")
+  logger.debug("Setting [" .. lul_device .."][" .. service .."][" .. name .. "] = " .. value .. " (" .. type(value) .. ")")
   getVariableTable(service, lul_device)[name] = value
 end
 
 
 function  variable_get(service, name, lul_device)
   local value = getVariableTable(service, lul_device)[name]
-  log.debug("Getting [" .. lul_device .."][" .. service .."][" .. name .. "] = " .. tostring(value) .. " (" .. type(value) .. ")")
+  logger.debug("Getting [" .. lul_device .."][" .. service .."][" .. name .. "] = " .. tostring(value) .. " (" .. type(value) .. ")")
   return(value)
 end
 
 
 function  call_delay(function_name, delay, data, thread)
-  log.debug("luup.call_delay called, function_name = " .. function_name ..
+  logger.debug("luup.call_delay called, function_name = " .. function_name ..
     ", delay = " .. delay)
   g_callbackFunctions[function_name] = {}
   g_callbackFunctions[function_name].name = function_name
@@ -186,7 +186,7 @@ end
 
 
 function  sleep(sleepTime)
-  log.debug ("Sleeping for " .. sleepTime .. " milliseconds")
+  logger.debug ("Sleeping for " .. sleepTime .. " milliseconds")
   --sleep(sleepTime)
   socket.sleep(sleepTime / 1000)
 end
@@ -201,29 +201,29 @@ function  task(...)
 end
 
 function  call_action(service, action, arguments, lul_device)
-  log.debug("luup.call_action called, service = " , service , ", action = ", action,
+  logger.debug("luup.call_action called, service = " , service , ", action = ", action,
     ", arguments = " ,arguments, ", lul_device = ", lul_device)
 end
 
 function  variable_watch(function_name, service, variable, lul_device)
-  log.debug("luup.variable_watch called, ", "service = ", service, ", lul_device = ",lul_device,  ", variable = ", variable, ", functionName = ", functionName)
+  logger.debug("luup.variable_watch called, ", "service = ", service, ", lul_device = ",lul_device,  ", variable = ", variable, ", functionName = ", functionName)
   addWatcher(service, lul_device, variable, function_name)
 end
 
 function  device_supports_service(service, lul_device)
-  log.debug("luup.device_supports_service called: service = " , service , ", lul_device = ", lul_device)
+  logger.debug("luup.device_supports_service called: service = " , service , ", lul_device = ", lul_device)
   local vars = getVariableTable(service, lul_device)
   local supported = (#vars > 0)
-  log.debug("luup.device_supports_service result: service = " , service , ", supported = ", supported)
+  logger.debug("luup.device_supports_service result: service = " , service , ", supported = ", supported)
   return supported
 end
 
 function  chdev_start(...)
-  log.debug("luup.chdev.start called", arg)
+  logger.debug("luup.chdev.start called", arg)
 end
 
 function  chdev_sync(...)
-  log.debug("luup.chdev.sync called", arg)
+  logger.debug("luup.chdev.sync called", arg)
 
 end
 
@@ -232,7 +232,7 @@ function  chdev_append(parentDeviceId, rootPtr,
   deviceType,
   deviceFile, implementationFile, defaultParams, embedded)
 
-  log.debug("luup.chdev.append called, ", parentDeviceId,  ", ",rootPtr, ", ",
+  logger.debug("luup.chdev.append called, ", parentDeviceId,  ", ",rootPtr, ", ",
     id,  ", ",description, ", ",
     deviceType, ", ",
     deviceFile,  ", ",implementationFile, ", ", defaultParams,  ", ",embedded)
@@ -241,7 +241,7 @@ function  chdev_append(parentDeviceId, rootPtr,
 
   local function processParam(line)
     local service, variable, value =  string.match(line, "([^,]*),([^=]*)=(.*)")
-    log.trace("service = ", service, ", variable = ", variable, ", value = ", value)
+    logger.trace("service = ", service, ", variable = ", variable, ", value = ", value)
     variable_set(service,variable,value,newDeviceId)
   end
 
@@ -255,11 +255,11 @@ end
 
 function  _createDevice(parentDeviceId, deviceId, description, deviceType, defaultParams)
 
-  log.trace("luup._createDevice called, ",parentDeviceId, ", ", deviceId,  ", ",description,  ", ",deviceType,  ", ",defaultParams)
+  logger.trace("luup._createDevice called, ",parentDeviceId, ", ", deviceId,  ", ",description,  ", ",deviceType,  ", ",defaultParams)
 
   local deviceData = { ["description"] = description, ["id"] = deviceId, ["device_type"] = deviceType, ["device_num_parent"] = parentDeviceId }
   g_devices[g_nextDeviceId] = deviceData
-  log.debug ("Added deviceId  = ", g_nextDeviceId)
+  logger.debug ("Added deviceId  = ", g_nextDeviceId)
   g_nextDeviceId = g_nextDeviceId + 1
   return g_nextDeviceId - 1
 end
@@ -285,20 +285,20 @@ function  _callbackLoop()
       g_callbackFunctions[nextFunc.name] = nil
       local now = os.time()
       if (nextFunc.executionTime > now) then
-        log.debug ("Sleeping for " .. nextFunc.executionTime - now .. " seconds")
+        logger.debug ("Sleeping for " .. nextFunc.executionTime - now .. " seconds")
         sleep((nextFunc.executionTime - now) * 1000)
       end
       local func = findFunction(g_functions, nextFunc.name)
       if (func ~= nil) then
-        log.debug ("Calling function " .. nextFunc.name)
+        logger.debug ("Calling function " .. nextFunc.name)
         func (nextFunc.data)
       else
-        log.debug ("Couldn't find function " .. nextFunc.name)
+        logger.debug ("Couldn't find function " .. nextFunc.name)
       end
     end
   until (not nextFunc)
 
-  log.debug("luup._callbackLoop() complete")
+  logger.debug("luup._callbackLoop() complete")
 end
 
 function  _setLog(logModule)
@@ -306,7 +306,7 @@ function  _setLog(logModule)
 end
 
 
--- log.setConfig(LOG_CONFIG)
+-- logger.setConfig(LOG_CONFIG)
 
 chdev = { start=chdev_start, sync=chdev_sync, append=chdev_append }
 
