@@ -108,14 +108,14 @@ end
 -- for the given fileName and functionName
 local function getConfiguredLogLevel(fileName, functionName)
   local level = nil
-
+ 
   if (g_logConfig.version and g_logConfig.version == 1) then
     local fileConfig = g_logConfig.files[fileName]
     if (fileConfig ~= nil) then
       if (fileConfig.functions[functionName]) then
         level = fileConfig.functions[functionName]
       else
-        level = fileConfig.files[fileName].level
+        level = fileConfig.level
       end
     end
   end
@@ -229,7 +229,10 @@ local function logValuesInternal(logLevel, message, ...)
     for i = 1,#args,2 do
       table.insert(logMessage, args[i])
       table.insert(logMessage, " = ")
-      table.insert(logMessage, args[i+1])
+      table.insert(logMessage, deepToString(args[i+1]))
+      table.insert(logMessage, " (")
+      table.insert(logMessage, type(args[i+1]))
+      table.insert(logMessage, ")")
       if (i < #args - 1) then
         table.insert(logMessage, ", ")
       end
